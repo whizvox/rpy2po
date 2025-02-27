@@ -57,13 +57,13 @@ directory. Only used when `--export=rpy`
 * Generates `./export/en.po`
 * Generates `./export/formats.en.po`
 
-`python rpy2po.py --project=C:\Users\jsmith\RenPyProjects\MyCoolVN --lang=en --dest=customexport`
+`python rpy2po.py --project=/home/jsmith/RenPyProjects/MyVisualNovel --lang=en --dest=customexport`
 
 * Reads all `.rpy` files in `/home/jsmith/RenPyProjects/MyVisualNovel/game/tl/en`
 * Generates `./customexport/en.po`
 * Generates `./customexport/formats.en.po`
 
-`python rpy2po.py --project=C:\Users\jsmith\RenPyProjects\MyCoolVN --lang=en --filter=script-*.rpy`
+`python rpy2po.py --project=/home/jsmith/RenPyProjects/MyVisualNovel --lang=en --filter=script-*.rpy`
 
 * Reads all files in `/home/jsmith/RenPyProjects/MyVisualNovel/game/tl/en` that match the `script-*.rpy` filter (e.g. `script-act1.rpy`, `script-emi-a4.rpy`)
 * Generates `./export/en.po`
