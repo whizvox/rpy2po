@@ -1,0 +1,13 @@
+# IDEA
+/.venv
+/.idea
+
+# Python cache
+__pycache__
+
+# Output of running rpy2po utility and tests
+/log.txt
+/char_names.json
+/export
+/staging
+/testexport
