@@ -14,9 +14,9 @@ logger = logging.getLogger("rpy2po")
 
 
 class Rpy2PoArguments:
-    def __init__(self, action: typing.Literal["gennames", "verify", "merge", "exportpo", "exportrpy"],
+    def __init__(self, action: typing.Literal["gennames", "verify", "merge", "exportpo", "exportpot", "exportrpy"],
                  project_dir: str | None, langs: list[str], filters: list[str], dest_dir: str | None,
-                 names_path: str | None, pot_path: str | None, stage: bool):
+                 names_path: str | None, pot_path: str | None, stage: bool, ref_lang: str | None):
         self.action = action
         self.project_dir = project_dir
         self.langs = langs
@@ -25,6 +25,7 @@ class Rpy2PoArguments:
         self.names_path = names_path
         self.pot_path = pot_path
         self.stage = stage
+        self.ref_lang = ref_lang
 
 
 def generate_example_names():
@@ -79,7 +80,7 @@ def merge_with_pot(args: Rpy2PoArguments):
         lang_file.save()
 
 
-def export_to_po(args: Rpy2PoArguments):
+def export_to_po(args: Rpy2PoArguments, as_pot: bool=False):
     if args.project_dir is None:
         logger.error("Project directory not defined. Try --project=DIR")
         return
@@ -97,7 +98,16 @@ def export_to_po(args: Rpy2PoArguments):
     else:
         logger.warning("No name map specified. While this isn't required, it is highly recommended")
         name_map = dict()
-    exporter = rpytl.RPY2POExporter(name_map=name_map)
+    ref_formats = None
+    if args.ref_lang is not None:
+        ref_name = "formats." + args.ref_lang + ".json"
+        ref_path = os.path.join(args.dest_dir, ref_name)
+        if not os.path.exists(ref_path):
+            logger.error("Could not find a %s file at \"%s\"", ref_name, args.dest_dir)
+            return
+        ref_formats = DialogueFormats()
+        ref_formats.load(ref_path)
+    exporter = rpytl.RPY2POExporter(name_map=name_map, formats=ref_formats)
     for lang in args.langs:
         in_files = list()
         root_dir = os.path.join(args.project_dir, "game/tl", lang)
@@ -111,43 +121,51 @@ def export_to_po(args: Rpy2PoArguments):
         if len(in_files) == 0:
             logger.warning("Skipping %s as no files were found", lang)
         else:
-            po_file, formats = exporter.export(in_files)
-            save_path = os.path.join(args.dest_dir, lang + ".po")
+            result = exporter.export(in_files)
+            save_path = os.path.join(args.dest_dir, lang + (".pot" if as_pot else ".po"))
             os.makedirs(args.dest_dir, exist_ok=True)
-            logger.info("Saving to \"%s\"", save_path)
-            po_file.save(save_path)
-            formats.save(os.path.join(args.dest_dir, "formats." + lang + ".json"))
+            logger.info("Saving PO file to \"%s\"", save_path)
+            result.pofile.save(save_path)
+            if len(result.mismatched_formats) > 10:
+                for i in range(10):
+                    logger.warning(f"Mismatched dialogue format at {result.mismatched_formats[i]}")
+                logger.warning(f"\t+{len(result.mismatched_formats) - 10} more...")
+            else:
+                for hashid in result.mismatched_formats:
+                    logger.warning(f"Mismatched dialogue format at {hashid}")
+            if result.formats is not None:
+                formats_path = os.path.join(args.dest_dir, "formats." + lang + ".json")
+                logger.info("Saving formats file to \"%s\"", formats_path)
+                result.formats.save(formats_path)
 
 
 def export_to_rpy(args: Rpy2PoArguments):
-    game_dir = os.path.join(args.project_dir, "game")
-    if not os.path.exists(game_dir) or not os.path.isdir(game_dir):
-        logger.error("Invalid Ren'Py project directory: \"%s\"", args.project_dir)
-        return
+    if args.stage:
+        tl_dir = "staging"
+    else:
+        game_dir = os.path.join(args.project_dir, "game")
+        if not os.path.exists(game_dir) or not os.path.isdir(game_dir):
+            logger.error("Invalid Ren'Py project directory: \"%s\"", args.project_dir)
+            return
+        tl_dir = os.path.join(game_dir, "tl")
     for lang in args.langs:
         po_path = os.path.join(args.dest_dir, lang + ".po")
         if not os.path.exists(po_path) or not os.path.isfile(po_path):
             logger.warning("Could not find .po file at \"%s\"", po_path)
             continue
-        tl_dir = os.path.join(game_dir, "tl", lang)
-        formats_path = os.path.join(args.dest_dir, "formats." + lang + ".json")
+        formats_path = os.path.join(args.dest_dir,
+                                    "formats." + (args.ref_lang if args.ref_lang is not None else lang) + ".json")
         if not os.path.exists(formats_path):
             logger.error("Missing formats file at \"%s\"", formats_path)
             return
         formats = DialogueFormats()
         formats.load(formats_path)
-        os.makedirs(tl_dir, exist_ok=True)
         exporter = rpytl.PO2RPYExporter(lang, formats)
         rpy_files = exporter.export(po_path)
         for rpy_path, rpy_tl in rpy_files.items():
             # ignore renpy common translations
             if not rpy_path.startswith("renpy/common/00"):
-                src_path = os.path.join(args.project_dir, rpy_path)
-                rel_path = os.path.relpath(src_path, game_dir)
-                if args.stage:
-                    rpy_path = os.path.join("staging", rel_path)
-                else:
-                    rpy_path = os.path.join(tl_dir, rel_path)
+                rpy_path = os.path.join(tl_dir, lang, os.path.relpath(rpy_path, "game"))
                 logger.info("Writing to \"%s\"", rpy_path)
                 os.makedirs(os.path.dirname(rpy_path), exist_ok=True)
                 rpy_tl.write(rpy_path)
@@ -170,20 +188,20 @@ def parse_arguments(args: dict[str, any]) -> Rpy2PoArguments:
         action = "exportrpy"
         if dest_dir is None:
             dest_dir = "./export"
-        if len(filters) == 0:
-            filters.append("*.po")
     else:
+        if args["export"] == "pot":
+            action = "exportpot"
         if dest_dir is None:
             dest_dir = "./export"
         if len(filters) == 0:
             filters.append("**/*.rpy")
     return Rpy2PoArguments(action, args.get("project", None), args["lang"], filters, dest_dir, args["names"], pot_path,
-                           args["stage"])
+                           args["stage"], args.get("ref", None))
 
 
 def main(args: dict[str, any]):
     logging.basicConfig(format="[%(asctime)s] %(levelname)s: %(message)s", level=logging.INFO,
-                        handlers=[ logging.FileHandler("log.txt"), logging.StreamHandler() ])
+                        handlers=[logging.FileHandler("log.txt"), logging.StreamHandler()])
     logger.info("-----------------------------")
     logger.info("Beginning execution of rpy2po")
     logger.info("-----------------------------")
@@ -194,8 +212,8 @@ def main(args: dict[str, any]):
         verify_against_pot(prog_args)
     elif prog_args.action == "merge":
         merge_with_pot(prog_args)
-    elif prog_args.action == "exportpo":
-        export_to_po(prog_args)
+    elif prog_args.action == "exportpo" or prog_args.action == "exportpot":
+        export_to_po(prog_args, prog_args.action == "exportpot")
     elif prog_args.action == "exportrpy":
         export_to_rpy(prog_args)
     else:
@@ -214,9 +232,11 @@ if __name__ == "__main__":
     parser.add_argument("--names", action="store", help="Path to a JSON file mapping character variables to names",
                         default="char_names.json")
     parser.add_argument("--stage", action="store_true", help="Whether to stage exported .rpy files")
+    parser.add_argument("--ref", action="store", help="The language of the formats file generated from the POT file",
+                        metavar="LANG")
     actions = parser.add_mutually_exclusive_group()
-    actions.add_argument("--export", action="store", help="Whether to export to a .po file or to .rpy files",
-                         choices=["po", "rpy"], default="po")
+    actions.add_argument("--export", action="store", help="Whether to export to a .po file, .pot file, or .rpy files",
+                         choices=["po", "pot", "rpy"], default="po")
     actions.add_argument("--gennames", action="store_true", help="Create an example name map", default=False)
     actions.add_argument("--verify", action="store", help="Path to a .pot file to verify against", metavar="FILE")
     actions.add_argument("--merge", action="store", help="Path to a .pot file to merge with", metavar="FILE")

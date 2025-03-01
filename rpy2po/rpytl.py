@@ -240,10 +240,26 @@ class DialogueFormats(dict[str, str]):
             self._load(jsonobj)
 
 
+class POExportResult:
+    def __init__(self, pofile: polib.POFile, formats: DialogueFormats | None, mismatched_formats: list[str] | None=None):
+        """
+        Result of exporting a Ren'Py translation file to a PO file
+        :param pofile: The PO file to be written
+        :param formats: The dialogue formats
+        :param mismatched_formats: All hashids with mismatched dialogue formats
+        """
+        self.pofile = pofile
+        self.formats = formats
+        if mismatched_formats is None:
+            self.mismatched_formats = []
+        else:
+            self.mismatched_formats = mismatched_formats
+
+
 class RPY2POExporter:
     def __init__(self, read_encoding: str="utf-8-sig", wrapwidth: int = 120, write_encoding: str = "utf-8",
                  check_for_duplicates: bool = False, merge_duplicates: bool=False,
-                 name_map: dict[str, str] | None=None):
+                 name_map: dict[str, str] | None=None, formats: DialogueFormats | None=None):
         """
         A utility class to assist with exporting .rpy files to .po files
         :param read_encoding: The encoding to use when reading .rpy files
@@ -251,8 +267,10 @@ class RPY2POExporter:
         :param write_encoding: The encoding to use when writing the .po file
         :param check_for_duplicates: Whether to check for duplicate entries in the .po file
         :param merge_duplicates: Whether to merge duplicate translations using multiple occurrences
-        :param name_map: A dictionary to map character code names to human-readable names for translators
-        if the entry is a line of dialogue
+        :param name_map: A dictionary to map character code names to human-readable names for translators if the entry
+        is a line of dialogue
+        :param formats: A reference dialogue formats object. If None, a formats object is returned in #export. If not
+        None, no formats object is returned in #export, but each entry will be verified against it.
         """
         self.read_encoding = read_encoding
         self.wrapwidth = wrapwidth
@@ -260,13 +278,18 @@ class RPY2POExporter:
         self.check_for_duplicates = check_for_duplicates
         self.merge_duplicates = merge_duplicates
         self.name_map = name_map if name_map is not None else {}
+        self.formats = formats
 
-    def export(self, in_paths: list[str | os.PathLike[str]]) -> tuple[polib.POFile, DialogueFormats]:
+    def export(self, in_paths: list[str | os.PathLike[str]]) -> POExportResult:
         pofile = polib.POFile(wrapwidth=self.wrapwidth, encoding=self.write_encoding,
                               check_for_duplicates=self.check_for_duplicates)
         all_occurrences: dict[str, polib.POEntry] = {}
-        formats = DialogueFormats()
+        if self.formats is None:
+            formats = DialogueFormats()
+        else:
+            formats = None
         missing_names = set()
+        mismatched_formats = list()
         for in_path in in_paths:
             logger.info("Reading from \"%s\"", in_path)
             rpyfile = read_translation_file(in_path, encoding=self.read_encoding)
@@ -297,7 +320,10 @@ class RPY2POExporter:
                         if text_dialogue.nameonly and msgstr != "":
                             msgstr = text_dialogue.who_name + " :: " + msgstr
                     if orig_dialogue is None:
-                        formats[entry.hashid] = entry.orig
+                        if self.formats is None:
+                            formats[entry.hashid] = entry.orig
+                        elif self.formats.get(entry.hashid) != entry.orig:
+                            mismatched_formats.append(entry.hashid)
                     else:
                         if orig_dialogue.who_name is None:
                             if orig_dialogue.who not in missing_names:
@@ -305,7 +331,10 @@ class RPY2POExporter:
                                 logger.warning("Missing name from name map: %s", orig_dialogue.who)
                         else:
                             comment = orig_dialogue.who_name + " speaking"
-                        formats[entry.hashid] = orig_dialogue.srcfmt
+                        if self.formats is None:
+                            formats[entry.hashid] = orig_dialogue.srcfmt
+                        elif self.formats.get(entry.hashid) != orig_dialogue.srcfmt:
+                            mismatched_formats.append(entry.hashid)
                 else:
                     msgid = entry.orig
                     msgstr = entry.text
@@ -323,7 +352,7 @@ class RPY2POExporter:
                     poentry = polib.POEntry(msgid=msgid, msgstr=msgstr, msgctxt=msgctxt,
                                             comment=comment, occurrences=[(entry.file, str(entry.line))])
                     pofile.append(poentry)
-        return pofile, formats
+        return POExportResult(pofile, formats, mismatched_formats)
 
 
 class RenPyTranslationFiles(dict[str, RenPyTranslationFile]):
