@@ -8,6 +8,7 @@ import logging
 import polib
 
 from rpy2po import rpytl
+from rpy2po.climenu import show_interactive_menu
 from rpy2po.rpytl import DialogueFormats
 
 logger = logging.getLogger("rpy2po")
@@ -171,10 +172,10 @@ def export_to_rpy(args: Rpy2PoArguments):
                 rpy_tl.write(rpy_path)
 
 
-def parse_arguments(args: dict[str, any]) -> Rpy2PoArguments:
+def parse_arguments(args: dict[str, any]) -> Rpy2PoArguments | None:
     filters = args["filter"]
     pot_path = None
-    action = "exportpo"
+    action = None
     if args["gennames"]:
         action = "gennames"
     elif args["verify"] is not None:
@@ -188,8 +189,13 @@ def parse_arguments(args: dict[str, any]) -> Rpy2PoArguments:
     else:
         if args["export"] == "pot":
             action = "exportpot"
+        elif args["export"] == "po":
+            action = "exportpo"
         if len(filters) == 0:
             filters.append("**/*.rpy")
+    if action is None:
+        #return None
+        action = "exportpo"
     return Rpy2PoArguments(action, args.get("project", None), args["lang"], filters, args["dest"], args["names"],
                            pot_path, args["stage"], args.get("ref", None))
 
@@ -201,7 +207,9 @@ def main(args: dict[str, any]):
     logger.info("Beginning execution of rpy2po")
     logger.info("-----------------------------")
     prog_args = parse_arguments(args)
-    if prog_args.action == "gennames":
+    if prog_args is None:
+        show_interactive_menu()
+    elif prog_args.action == "gennames":
         generate_example_names()
     elif prog_args.action == "verify":
         verify_against_pot(prog_args)
@@ -230,7 +238,7 @@ def get_argument_parser():
                         metavar="LANG")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--export", action="store", help="Whether to export to a .po file, .pot file, or .rpy files",
-                         choices=["po", "pot", "rpy"], default="po")
+                         choices=["po", "pot", "rpy"])
     actions.add_argument("--gennames", action="store_true", help="Create an example name map", default=False)
     actions.add_argument("--verify", action="store", help="Path to a .pot file to verify against", metavar="FILE")
     actions.add_argument("--merge", action="store", help="Path to a .pot file to merge with", metavar="FILE")

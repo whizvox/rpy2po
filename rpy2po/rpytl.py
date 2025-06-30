@@ -257,7 +257,7 @@ class POExportResult:
 
 
 class RPY2POExporter:
-    def __init__(self, read_encoding: str="utf-8-sig", wrapwidth: int = 120, write_encoding: str = "utf-8",
+    def __init__(self, read_encoding: str="utf-8-sig", wrapwidth: int = 80, write_encoding: str = "utf-8",
                  check_for_duplicates: bool = False, merge_duplicates: bool=False,
                  name_map: dict[str, str] | None=None, formats: DialogueFormats | None=None):
         """

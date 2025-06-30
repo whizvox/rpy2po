@@ -10,6 +10,7 @@ __pycache__
 # Output of running rpy2po utility and tests
 /log.txt
 /char_names.json
+/config.json
 /export
 /staging
 /testexport
