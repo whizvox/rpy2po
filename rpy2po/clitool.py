@@ -194,8 +194,8 @@ def parse_arguments(args: dict[str, any]) -> Rpy2PoArguments | None:
         if len(filters) == 0:
             filters.append("**/*.rpy")
     if action is None:
-        #return None
-        action = "exportpo"
+        return None
+        #action = "exportpo"
     return Rpy2PoArguments(action, args.get("project", None), args["lang"], filters, args["dest"], args["names"],
                            pot_path, args["stage"], args.get("ref", None))
 

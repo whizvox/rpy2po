@@ -64,10 +64,10 @@ class RenPyTranslationEntry:
     def is_dialogue(self):
         return self.hashid is not None
 
-    def extract_orig_dialogue(self, name_map: dict[str, str]) -> RenPyDialogue:
+    def extract_orig_dialogue(self, name_map: dict[str, str]) -> RenPyDialogue | None:
         return parse_dialogue(self.orig, name_map)
 
-    def extract_text_dialogue(self, name_map: dict[str, str]) -> RenPyDialogue:
+    def extract_text_dialogue(self, name_map: dict[str, str]) -> RenPyDialogue | None:
         return parse_dialogue(self.text, name_map)
 
 
